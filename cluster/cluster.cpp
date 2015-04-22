@@ -42,8 +42,8 @@ struct Color {
 	int i;
 	float strength;
 
-	bool operator()(const Color& left, const Color& right) {
-		return left.strength > right.strength;
+	bool operator<(const Color& other) const {
+		return strength > other.strength;
 	};
 
 };
@@ -55,7 +55,7 @@ struct Cluster {
 typedef std::vector<Cluster> Clusters;
 
 
-void initialize(Clusters clusters, int k, cv::Mat& edges) {
+void initialize(Clusters& clusters, int k, const cv::Mat& edges) {
 	std::priority_queue<Color> edge_sums;
 	for (int i = 0; i < edges.rows; ++i) {
 		Color color;
@@ -72,18 +72,22 @@ void initialize(Clusters clusters, int k, cv::Mat& edges) {
 	}
 }
 
-void cluster(cv::Mat& edges, int k) {
+Clusters cluster(cv::Mat& edges, int k) {
 	Clusters clusters;
 	initialize(clusters, k, edges);
+	return clusters;
 
 	// for a number of iter do
-	// eval 
+	// eval score and store in curr_score
+	// naive: pick lowest and put it in another cluster
+	// eval score and if greater than curr_score
 }
 
 int _tmain(int argc, _TCHAR* argv[])
 {
 	cv::Mat edges(27, 27, CV_32FC1);
 	read_csv("edge-strength-matrix.csv", 1, edges);
+	auto clusters = cluster(edges, 3);
 	//std::cout << edges << std::endl;
 	return 0;
 }
