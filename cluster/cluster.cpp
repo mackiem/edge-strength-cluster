@@ -72,6 +72,18 @@ void initialize(Clusters& clusters, int k, const cv::Mat& edges) {
 	}
 }
 
+float eval_color_score(const Cluster cluster, cv::Mat& edges) {
+	for (int i = 0; i < cluster.colors.size(); ++i) {
+		cluster.colors.
+
+	}
+}
+
+float eval_score(const Cluster clusters, const cv::Mat& edges) {
+
+
+}
+
 Clusters cluster(cv::Mat& edges, int k) {
 	Clusters clusters;
 	initialize(clusters, k, edges);
