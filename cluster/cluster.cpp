@@ -103,22 +103,30 @@ void initialize(Clusters& clusters, int k, const cv::Mat& edges) {
 void mean_std_dev(std::vector<float> v, float& mean, float& std_dev) {
     float sum = std::accumulate(std::begin(v), std::end(v), 0.f);
 
-    mean = sum / v.size();
+	if (v.size() > 0) {
+		mean = sum / v.size();
 
-    float accum = 0.0;
-    std::for_each(std::begin(v), std::end(v), [&](const double d) {
-        accum += (d - mean) * (d - mean);
-    });
+		float accum = 0.0;
+		std::for_each(std::begin(v), std::end(v), [&](const double d) {
+			accum += (d - mean) * (d - mean);
+		});
 
-    std_dev = sqrt(accum / (v.size() - 1));
+		std_dev = sqrt(accum / (v.size()));
+	}
+	else {
+		mean = 0.f;
+		std_dev = 0.f;
+	}
 }
 
 float calc_score(float mean, float stddev) {
 	//std::cout << "mean : " << mean << " std dev : " << stddev << std::endl;
-    const float alpha = 0.9f;
+    const float alpha = 0.5f;
 	const float max_mean = 255.f;
+	const float max_stddev = 5.f;
     float mean_part = alpha * (max_mean - mean) / max_mean;
-    float std_dev_part = (1 - alpha) * stddev;
+    float std_dev_part = (1 - alpha) * stddev / max_stddev;
+	std::cout << "mean part: " << mean_part << " std dev part : " << std_dev_part << std::endl;
     float score = mean_part + std_dev_part;
     return score;
 }
@@ -159,17 +167,22 @@ Color remove_color(Cluster& cluster) {
 	return color;
 }
 
+unsigned int total_cluster_size(const Clusters& clusters, bool print = false) {
+	int total = 0;
+	if (print) std::cout << "Cluster sizes -> total : ";
+	for (auto& inner_cluster_r : clusters) {
+		if (print) std::cout << inner_cluster_r.size() << ", ";
+		total += inner_cluster_r.size();
+	}
+	if (print) std::cout << " -> " << total << std::endl;
+	return total;
+}
+
 Clusters cluster(cv::Mat& edges, int k) {
     Clusters clusters;
     initialize(clusters, k, edges);
 
-	int init_total = 0;
-	std::cout << "Cluster sizes -> total : ";
-	for (auto& inner_cluster : clusters) {
-		std::cout << inner_cluster.size() << ", ";
-		init_total += inner_cluster.size();
-	}
-	std::cout << " -> " << init_total << std::endl;
+	int init_total = total_cluster_size(clusters, true);
 	
 
     // for a number of iter do
@@ -179,16 +192,19 @@ Clusters cluster(cv::Mat& edges, int k) {
     int iter_num = 100;
     for (int i = 0; i < iter_num; ++i) {
         float score = eval_score(clusters, edges);
+		std::cout << "init score : " << score << std::endl;
         float min_score = 1e6;
-        Clusters max_clusters = clusters;
+        Clusters min_clusters = clusters;
 
         // pick the lowest, and shuffle it around
-        for (auto& cluster : clusters) {
+		for (auto clusterItr = clusters.begin(); clusterItr != clusters.end(); ) {
+			auto& cluster = *clusterItr;
             min_score = eval_score(clusters, edges);
             float curr_score = min_score;
 			auto lowest_color = remove_color(cluster);
 
             for (auto& inner_cluster : clusters) {
+				//std::cout << "after removing color : "; total_cluster_size(clusters, true);
                 if (cluster != inner_cluster) {
                     auto iterator_pair = inner_cluster.insert(lowest_color);
 					if (!iterator_pair.second) {
@@ -196,38 +212,43 @@ Clusters cluster(cv::Mat& edges, int k) {
 					}
                     auto color_pos = *iterator_pair.first;
                     //auto color_pos = iterator_pair;
-                    float new_score = eval_score(clusters, edges);
-					std::cout << "new score : " << new_score << " color used : " << lowest_color.i << std::endl;
+					float new_score = eval_score(clusters, edges);
+					if (cluster.size() == 1) {
+						eval_score(clusters, edges);
+					}
+					//std::cout << "new score : " << new_score << " color used : " << lowest_color.i << std::endl;
+					if (new_score < 0 && new_score > 1000 && new_score != new_score) {
+						assert(new_score > 0);
+					}
                     if (new_score < min_score) {
-                        max_clusters = clusters;
+                        min_clusters = clusters;
                         min_score = new_score;
                     }
-                    else {
-                        inner_cluster.erase(color_pos);
-                    }
-					int total = 0;
-					std::cout << "Cluster sizes -> total : ";
-					for (auto& inner_cluster_r : clusters) {
-						std::cout << inner_cluster_r.size() << ", ";
-						total += inner_cluster_r.size();
-						if (cluster == inner_cluster_r) {
-							total++;
-						}
-					}
-					std::cout << " -> " << total << std::endl;
-					if (total != init_total) {
-						assert(total == init_total);
-					}
+
+					inner_cluster.erase(color_pos);
+					//std::cout << "after color shuffling : ";
+					//int total = total_cluster_size(clusters, true);
 				}
 			}
 			if (min_score == curr_score) {
+				// TODO : more robust check, check if removed color is present in another cluster
 				cluster.insert(lowest_color);
+				++clusterItr;
+			}
+			else {
+				clusters = min_clusters;
+				clusterItr = clusters.begin();
+			}
+			int total = total_cluster_size(clusters, false);
+			if (total != init_total) {
+				assert(total == init_total);
 			}
         }
-        clusters = max_clusters;
+        clusters = min_clusters;
         std::cout << score << std::endl;
     }
 
+	total_cluster_size(clusters, true);
     return clusters;
 }
 
@@ -236,6 +257,15 @@ int _tmain(int argc, _TCHAR* argv[])
     cv::Mat edges(27, 27, CV_32FC1);
     read_csv("edge-strength-matrix.csv", 1, edges);
     auto clusters = cluster(edges, 3);
+	int i = 1;
+	for (auto& cluster : clusters) {
+		adjust_edge_strength(cluster, edges);
+		std::cout << "Cluster " << i << " : " << std::endl;
+		for (auto& color : cluster) {
+			std::cout << color.i << ", " << color.strength << std::endl;
+		}
+		std::cout << std::endl;
+	}
     //std::cout << edges << std::endl;
     return 0;
 }
