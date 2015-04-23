@@ -265,6 +265,7 @@ int _tmain(int argc, _TCHAR* argv[])
 			std::cout << color.i << ", " << color.strength << std::endl;
 		}
 		std::cout << std::endl;
+		++i;
 	}
     //std::cout << edges << std::endl;
     return 0;
